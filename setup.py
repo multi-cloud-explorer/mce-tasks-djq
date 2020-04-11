@@ -52,6 +52,7 @@ setup(
     version="0.1.0",
     description='Django-Q Tasks for Multi Cloud Explorer',
     url='https://github.com/multi-cloud-explorer/mce-tasks-djq.git',
+    license='GPLv3+',
     packages=find_packages(),
     include_package_data=True, 
     tests_require=tests_requires,
@@ -65,6 +66,7 @@ setup(
     classifiers=[
         'Intended Audience :: Developers',
         'Natural Language :: English',
+        'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.7',
     ],
