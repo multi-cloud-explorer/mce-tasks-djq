@@ -1,3 +1,4 @@
+import os
 from setuptools import setup, find_packages
 
 install_requires = [
@@ -5,13 +6,16 @@ install_requires = [
     'django-q',
     'psutil',
     'jsonpatch',
-    'mce-django-app>=0.1.0',
-    'mce-lib-azure>=0.1.0',
+    'mce-django-app@git+https://github.com/multi-cloud-explorer/mce-django-app.git@master#egg=mce_django_app',
+    'mce-lib-azure@git+https://github.com/multi-cloud-explorer/mce-lib-azure.git@master#egg=mce_lib_azure',
+    #'mce-django-app',
+    #'mce-lib-azure',
     #'mce-lib-aws',
     #'mce-lib-gcp',
 ]
 
 tests_requires = [
+    'psycopg2-binary',
     'pytest',
     'pytest-cov',
     'pytest-pep8',
@@ -21,11 +25,14 @@ tests_requires = [
     'pytest-instafail',
     'curlify',
     'factory-boy',
-    'bandit',         # python security audit
+    'bandit',
     'flake8',
     'coverage',
     'responses',
     'freezegun',
+    'django-environ',
+    'django-filter',
+    'django-select2',
 ]
 
 dev_requires = [
@@ -33,24 +40,25 @@ dev_requires = [
     'ipython',
     'autopep8',
     'black',
-]
-
-doc_requires = [
-    'Sphinx',
-    'sphinx_rtd_theme',
-    'sphinx-click',
+    'wheel',
 ]
 
 extras_requires = {
     'tests': tests_requires,
     'dev': dev_requires,
-    'doc': doc_requires,
 }
+
+here = os.path.abspath(os.path.dirname(__file__))
+
+with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
 setup(
     name='mce-tasks-djq',
     version="0.1.0",
     description='Django-Q Tasks for Multi Cloud Explorer',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     url='https://github.com/multi-cloud-explorer/mce-tasks-djq.git',
     license='GPLv3+',
     packages=find_packages(),
