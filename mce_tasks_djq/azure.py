@@ -1,3 +1,4 @@
+import copy
 import logging
 import json
 import jsonpatch
@@ -7,10 +8,11 @@ from django_q.models import Schedule
 from django_q.tasks import async_task, result
 
 #from django.core.signals import request_finished
-# end func: request_finished.send(sender="greenlet")
+#request_finished.send(sender="greenlet")
 
 from mce_azure.utils import get_access_token
 from mce_azure import core as cli
+from mce_azure.core import PROVIDERS
 
 from mce_django_app.models.common import ResourceEventChange, Tag, ResourceType
 from mce_django_app import constants
@@ -35,10 +37,9 @@ def create_event_change_create(new_resource):
         new_object=new_resource.to_dict(exclude=['created', 'updated']),
     )
 
-def create_event_change_update(old_resource, new_resource):
+def create_event_change_update(old_obj, new_resource):
     """UPDATE Event for ResourceAzure and ResourceGroupAzure"""
 
-    old_obj = old_resource.to_dict(exclude=["created", "updated"])
     new_obj = new_resource.to_dict(exclude=["created", "updated"])
     
     patch = jsonpatch.JsonPatch.from_diff(old_obj, new_obj)
@@ -66,8 +67,7 @@ def create_event_change_delete(queryset):
             old_object=doc.to_dict(exclude=['created', 'updated']),
         )
 
-#@close_connection
-def sync_resource_groups(subscription_id):
+def sync_resource_group(subscription_id):
     
     subscription, session = get_subscription_and_session(subscription_id)    
     resources_groups = cli.get_resourcegroups_list(subscription_id, session=session)
@@ -104,8 +104,11 @@ def sync_resource_groups(subscription_id):
             tag, created = Tag.objects.update_or_create(name=k, provider=constants.Provider.AZURE, defaults=dict(value=v))
             tags_objects.append(tag)
             # if created: todo event tag
-                
+
         old_resource = models.ResourceGroupAzure.objects.filter(id=resource_id).first()
+        old_object = None
+        if old_resource:
+            old_object = old_resource.to_dict(exclude=["created", "updated"])
 
         new_resource, created = models.ResourceGroupAzure.objects.update_or_create(
             id=resource_id, 
@@ -125,20 +128,19 @@ def sync_resource_groups(subscription_id):
             _created += 1
             create_event_change_create(new_resource)
         else:
-            changes = create_event_change_update(old_resource, new_resource)
+            changes = create_event_change_update(old_object, new_resource)
             if changes:
                 _updated += 1
 
     logger.info("sync - azure - ResourceGroupAzure - _errors[%s] - created[%s]- updated[%s]" % (_errors, _created, _updated))
 
     # Create events delete
-    qs = models.ResourceGroupAzure.objects.filter(id__in=found_ids)
+    qs = models.ResourceGroupAzure.objects.exclude(id__in=found_ids, subscription=subscription)
     create_event_change_delete(qs)
 
     # Mark for deleted
-    qs = models.ResourceGroupAzure.objects.exclude(
-        id__in=found_ids, subscription=subscription, deleted=False)
-    _, _deleted = qs.delete()
+    qs = models.ResourceGroupAzure.objects.exclude(id__in=found_ids, subscription=subscription)
+    _deleted = qs.delete()
 
     logger.info(f"mark for deleted. [{_deleted}] old ResourceGroupAzure")
 
@@ -153,8 +155,7 @@ def sync_resource_groups(subscription_id):
         deleted=_deleted
     )
 
-#@close_connection
-def sync_resources(subscription_id):
+def sync_resource(subscription_id):
     """
     TODO: faire une version qui créer une async_task pour chaque resource
     1. fetch resource by id
@@ -171,11 +172,17 @@ def sync_resources(subscription_id):
 
     found_ids = []
 
-    resources, errors = cli.async_get_resources(subscription_id, session)
+    #resources, errors = cli.async_get_resources(subscription_id, session)
+    #for item in get_resources_list(
+    #    subscription_id, session=session, includes=PROVIDERS
+    #)
+    #get_resource_by_id, resource_id, session=session
     # TODO: attention si longue list
     # TODO: perte des errors ?
 
-    for r in resources:
+    for r in cli.get_resources_list(subscription_id, session):
+
+        print('!!!! get_resources_list : ', r)
 
         resource_id = r['id'].lower()
         found_ids.append(resource_id)
@@ -199,35 +206,40 @@ def sync_resources(subscription_id):
             _errors += 1
             continue
 
+        resource = cli.get_resource_by_id(resource_id, session=session)
+
         # TODO: gérer exception
 
-        metas = r.get('properties', {}) or {}
+        metas = resource.get('properties', {}) or {}
         
         tags_objects = []
 
         datas = dict(
-            name=r['name'], 
+            name=resource['name'], 
             subscription=subscription, 
             resource_type=_type, 
-            location=r.get('location'), 
+            location=resource.get('location'), 
             provider=constants.Provider.AZURE, 
             resource_group=group, 
             metas=metas
         )
         
-        if r.get('sku'): 
-            datas['sku'] = r.get('sku')
+        if resource.get('sku'): 
+            datas['sku'] = resource.get('sku')
         
-        if r.get('kind'): 
-            datas['kind'] = r.get('kind')
+        if resource.get('kind'): 
+            datas['kind'] = resource.get('kind')
 
-        tags = r.get('tags', {}) or {}
+        tags = resource.get('tags', {}) or {}
         for k, v in tags.items():
             tag, created = Tag.objects.update_or_create(name=k, provider=constants.Provider.AZURE, defaults=dict(value=v))
             tags_objects.append(tag)
             # if created: todo event tag
                 
         old_resource = models.ResourceAzure.objects.filter(id=resource_id).first()
+        old_object = None
+        if old_resource:
+            old_object = old_resource.to_dict(exclude=["created", "updated"])
 
         new_resource, created = models.ResourceAzure.objects.update_or_create(
             id=resource_id, 
@@ -241,23 +253,27 @@ def sync_resources(subscription_id):
             _created += 1
             create_event_change_create(new_resource)
         else:
-            changes = create_event_change_update(old_resource, new_resource)
+            changes = create_event_change_update(old_object, new_resource)
             if changes:
                 _updated += 1
         
     logger.info("sync - azure - ResourceAzure - errors[%s] - created[%s]- updated[%s]" % (_errors, _created, _updated))
 
     # Create events delete
-    # TODO: attention avec le soft delete !!!
-    qs = models.ResourceGroupAzure.objects.filter(id__in=found_ids)
+    qs = models.ResourceAzure.objects.exclude(id__in=found_ids, subscription=subscription)
     create_event_change_delete(qs)
 
-    qs = models.ResourceAzure.objects.exclude(
-        id__in=found_ids, subscription=subscription, deleted=False)
-    _, _deleted = qs.delete()
+    qs = models.ResourceAzure.objects.exclude(id__in=found_ids, subscription=subscription)
+    _deleted = qs.delete()
     
     logger.info("mark for deleted. [%s] old ResourceAzure" % _deleted)
 
+    return dict(
+        errors=_errors,
+        created=_created, 
+        updated=_updated,
+        deleted=_deleted
+    )
 
 def create_subscriptions_tasks():
 
@@ -267,8 +283,8 @@ def create_subscriptions_tasks():
 
         subscription_id = str(subscription.pk)
 
-        task_name = f"{subscription_id} : az-sync-resource-groups"
-        func='mce.azure.tasks.sync_resource_groups'
+        task_name = f"{subscription_id} : az-sync-resource-group"
+        func='mce.azure.tasks.sync_resource_group'
 
         _filter = dict(
             name=task_name,
@@ -308,11 +324,32 @@ def create_subscriptions_tasks():
         """
 
 
-def create_resource_types():
+def sync_resource_type():
 
-    providers = json.load(open('apps/mce-azure/mce_azure/azure-providers.json'))
+    _created = 0
+    _updated = 0
+    _errors = 0
+    _deleted = 0
 
-    for k, v in providers.items():
-        ResourceType.objects.create(name=k, provider=constants.Provider.AZURE)
+    #found_ids = []
 
+    for k, v in PROVIDERS.items():
+        r, created = ResourceType.objects.update_or_create(name=k, 
+                        defaults=dict(provider=constants.Provider.AZURE))
+        #found_ids.append(r.pk)
 
+        if created:
+            _created += 1
+        else:
+            _updated += 1
+
+    logger.info("sync - azure - ResourceType - errors[%s] - created[%s]- updated[%s]" % (_errors, _created, _updated))
+
+    # TODO: delete ???
+
+    return dict(
+        errors=_errors,
+        created=_created, 
+        updated=_updated,
+        deleted=_deleted
+    )
