@@ -8,10 +8,6 @@ install_requires = [
     'jsonpatch',
     'mce-django-app@git+https://github.com/multi-cloud-explorer/mce-django-app.git@master#egg=mce_django_app',
     'mce-lib-azure@git+https://github.com/multi-cloud-explorer/mce-lib-azure.git@master#egg=mce_lib_azure',
-    #'mce-django-app',
-    #'mce-lib-azure',
-    #'mce-lib-aws',
-    #'mce-lib-gcp',
 ]
 
 tests_requires = [
@@ -61,8 +57,8 @@ setup(
     long_description_content_type='text/markdown',
     url='https://github.com/multi-cloud-explorer/mce-tasks-djq.git',
     license='GPLv3+',
-    packages=find_packages(),
-    include_package_data=True, 
+    packages=find_packages(exclude=("tests",)),
+    include_package_data=False, 
     tests_require=tests_requires,
     install_requires=install_requires,
     extras_require=extras_requires,

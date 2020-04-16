@@ -26,8 +26,8 @@ install:
   - pip install coveralls
 
 script:
-  - black -S -t py37 --check mce_tasks_djq
-  - pytest
+  #- black -S -t py37 --check mce_tasks_djq
+  - coverage run -m pytest
 
 after_script:
   - coveralls

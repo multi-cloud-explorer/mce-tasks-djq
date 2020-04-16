@@ -17,7 +17,7 @@ def test_azure_sync_resource_group_create(
     session_get_func,
     get_subscription_and_session_func,
     mock_response_class, json_file, subscription, broker,
-    resource_type_azure_group):
+    mce_app_resource_type_azure_group):
     """Create 2 resources group and create changes events"""
 
     data = json_file("resource_group_list.json")
@@ -52,7 +52,7 @@ def test_azure_sync_resource_group_update(
     session_get_func,
     get_subscription_and_session_func,
     mock_response_class, json_file, subscription, broker,
-    resource_type_azure_group):
+    mce_app_resource_type_azure_group):
     """Update 1 resource group and create change event"""
 
     assert ResourceGroupAzure.all_objects.count() == 0
@@ -105,7 +105,7 @@ def test_azure_sync_resource_group_delete(
     session_get_func,
     get_subscription_and_session_func,
     mock_response_class, json_file, subscription, broker,
-    resource_type_azure_group):
+    mce_app_resource_type_azure_group):
     """Delete 2 resource group and create change events"""
 
     data = json_file("resource_group_list.json")

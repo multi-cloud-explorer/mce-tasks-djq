@@ -3,11 +3,8 @@ import pytest
 from django_q.tasks import fetch, async_task, result
 
 from mce_django_app.models.common import ResourceType
-from mce_django_app import constants
 
 from mce_tasks_djq.azure import PROVIDERS
-
-pytestmark = pytest.mark.django_db(transaction=True, reset_sequences=True)
 
 def test_azure_sync_resource_type(broker):
 

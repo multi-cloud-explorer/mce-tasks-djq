@@ -9,8 +9,6 @@ from mce_django_app.models.common import ResourceEventChange, ResourceType
 from mce_django_app.models.azure import ResourceAzure, ResourceGroupAzure
 from mce_django_app import constants
 
-pytestmark = pytest.mark.django_db(transaction=True, reset_sequences=True)
-
 @pytest.fixture
 def require_resource_types():
     return [
@@ -20,6 +18,11 @@ def require_resource_types():
         )
     ]
 
+# TODO: gérer erreur retry et autre pendant le chargement d'une ressource    
+# TODO: gérer product type avec | comme "Type": "Microsoft.Sql/servers/databases|v12.0,user",
+# le v12.0,user: devient le kind
+# TODO: name avec / comme "name": "samplesqlserver01/sample-azure-mssql"
+
 @patch("mce_azure.core.get_resources_list")
 @patch("mce_azure.core.get_resource_by_id")
 @patch("mce_tasks_djq.azure.get_subscription_and_session")
@@ -27,9 +30,14 @@ def test_azure_sync_resource_create(
     get_subscription_and_session,
     get_resource_by_id,
     get_resources_list,
-    mock_response_class, json_file, subscription, broker,
+    mock_response_class, 
+    json_file, 
+    subscription,
     resource_group,
+    broker,
     require_resource_types):
+
+    #resource_group = mce_app_azure_resource_group
 
     data_resource_list = json_file("resource-list.json")
     data_resource = json_file("resource-vm.json")
@@ -64,5 +72,5 @@ def test_azure_sync_resource_create(
     assert ResourceAzure.objects.count() == count
 
     assert ResourceEventChange.objects.filter(
-        action=constants.EventChangeType.CREATE).count() == count
+        action=constants.EventChangeType.CREATE).count() == count + 1 # ResourceGroup
 

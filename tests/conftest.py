@@ -5,8 +5,18 @@ import pytest
 
 from django_q.brokers import get_broker
 
+pytest_plugins = "mce_django_app.pytest.plugin"
+
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 FIXTURES_DIR = os.path.join(CURRENT_DIR, 'fixtures')
+
+@pytest.fixture(autouse=True)
+def enable_db_access_for_all_tests(db):
+    pass
+
+@pytest.fixture(autouse=True)
+def set_default_lang(settings):
+    settings.LANGUAGE_CODE = 'en'
 
 @pytest.fixture
 def fixtures_dir():

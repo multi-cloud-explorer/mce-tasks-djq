@@ -1,5 +1,8 @@
 import os
+import tempfile
+
 import environ
+from django.utils.translation import gettext_lazy as _
 
 env = environ.Env(DEBUG=(bool, False))
 
@@ -26,10 +29,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
-    'django.contrib.humanize',
-    'django_select2',
+
     'django_filters',
     'django_extensions',
+
     'django_q',
     'mce_django_app',
     'mce_tasks_djq',
@@ -46,25 +49,38 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'tests.app_test.urls'
+ROOT_URLCONF = 'project_test.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        #'DIRS': [
+        #     os.path.join(BASE_DIR, 'templates'),
+        #],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
+                'django.template.context_processors.debug',
+                'django.template.context_processors.i18n',
+                'django.template.context_processors.media',
+                'django.template.context_processors.static',
+                'django.template.context_processors.tz',
                 'django.contrib.messages.context_processors.messages',
+                'django.template.context_processors.request',
             ],
+            #'loaders': [
+            #    ('django.template.loaders.cached.Loader', [
+            #        'django.template.loaders.filesystem.Loader',
+            #        'django.template.loaders.app_directories.Loader',
+            #    ])
+            #],
         },
     },
 ]
 
-WSGI_APPLICATION = 'tests.app_test.wsgi.application'
+
+WSGI_APPLICATION = 'project_test.wsgi.application'
 
 CACHES = {
     'default': {
@@ -74,10 +90,12 @@ CACHES = {
 }
 
 DATABASES = {
-    'default': env.db(),
+    'default': env.db(default='sqlite:////tmp/mce-tasks-djq-test-sqlite.db'),
 }
 
 LOGIN_URL = 'admin:login'
+#LOGIN_URL = '/accounts/login/'
+#LOGIN_REDIRECT_URL = '/'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -97,7 +115,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LOCALE_PATHS = ( os.path.join(BASE_DIR, 'locale'), )
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGES = [
+  ('fr', _('Français')),
+  ('en', _('Anglais')),
+]
+
+LANGUAGE_CODE = 'fr'
 
 TIME_ZONE = 'UTC'
 
@@ -110,6 +133,8 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+MEDIA_ROOT = tempfile.gettempdir()
 
 SITE_ID = env('MCE_SITE_ID', default=1, cast=int)
 
@@ -133,10 +158,13 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'debug'
         },
+        #'db_log': {
+        #    'class': 'mce_django_app.db_log_handler.DatabaseLogHandler'
+        #},
     },
     'loggers': {
         '': {
-            'handlers': ['console'],
+            'handlers': ['console'], #'db_log'],
             'level': env('MCE_LOG_LEVEL', default='DEBUG'),
             'propagate': False,
         },
@@ -145,6 +173,9 @@ LOGGING = {
         'cchardet': {'level': 'WARN'},
     },
 }
+
+
+TEST_RUNNER = 'project_test.runner.PytestTestRunner'
 
 Q_CLUSTER = {
     'name': 'testing',

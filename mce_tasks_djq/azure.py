@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def get_subscription_and_session(subscription_id):
     # TODO: raise if active=False
-    subscription = models.Subscription.objects.get(id=subscription_id)
+    subscription = models.Subscription.objects.get(subscription_id=subscription_id)
     auth = subscription.get_auth()
     token = get_access_token(**auth)
     session = cli.get_session(token=token['access_token'])
@@ -48,7 +48,7 @@ def create_event_change_update(old_obj, new_resource):
     patch = jsonpatch.JsonPatch.from_diff(old_obj, new_obj)
 
     if patch.patch:
-        msg = f"create event change update for {old_obj['id']}"
+        msg = f"create event change update for {old_obj['resource_id']}"
         logger.info(msg)
 
         return ResourceEventChange.objects.create(
@@ -76,6 +76,8 @@ def sync_resource_group(subscription_id):
 
     subscription, session = get_subscription_and_session(subscription_id)
     resources_groups = cli.get_resourcegroups_list(subscription_id, session=session)
+    company = subscription.company
+    #users = company.user_set.all()
 
     _created = 0
     _updated = 0
@@ -113,16 +115,17 @@ def sync_resource_group(subscription_id):
             tags_objects.append(tag)
             # if created: todo event tag
 
-        old_resource = models.ResourceGroupAzure.objects.filter(id=resource_id).first()
+        old_resource = models.ResourceGroupAzure.objects.filter(resource_id=resource_id).first()
         old_object = None
         if old_resource:
             old_object = old_resource.to_dict(exclude=["created", "updated"])
 
         new_resource, created = models.ResourceGroupAzure.objects.update_or_create(
-            id=resource_id,
+            resource_id=resource_id,
             defaults=dict(
                 name=r['name'],  # TODO: lower ?
                 subscription=subscription,
+                company=company,
                 resource_type=_type,
                 location=r['location'],
                 provider=constants.Provider.AZURE,
@@ -134,7 +137,7 @@ def sync_resource_group(subscription_id):
 
         if created:
             _created += 1
-            create_event_change_create(new_resource)
+            #create_event_change_create(new_resource)
         else:
             changes = create_event_change_update(old_object, new_resource)
             if changes:
@@ -147,13 +150,13 @@ def sync_resource_group(subscription_id):
 
     # Create events delete
     qs = models.ResourceGroupAzure.objects.exclude(
-        id__in=found_ids, subscription=subscription
+        resource_id__in=found_ids, subscription=subscription
     )
     create_event_change_delete(qs)
 
     # Mark for deleted
     qs = models.ResourceGroupAzure.objects.exclude(
-        id__in=found_ids, subscription=subscription
+        resource_id__in=found_ids, subscription=subscription
     )
     _deleted = qs.delete()
 
@@ -175,6 +178,7 @@ def sync_resource(subscription_id):
     """
 
     subscription, session = get_subscription_and_session(subscription_id)
+    company = subscription.company
 
     _created = 0
     _updated = 0
@@ -183,34 +187,29 @@ def sync_resource(subscription_id):
 
     found_ids = []
 
-    # resources, errors = cli.async_get_resources(subscription_id, session)
-    # for item in get_resources_list(
-    #    subscription_id, session=session, includes=PROVIDERS
-    # )
-    # get_resource_by_id, resource_id, session=session
-    # TODO: attention si longue list
-    # TODO: perte des errors ?
-
     for r in cli.get_resources_list(subscription_id, session):
-
-        print('!!!! get_resources_list : ', r)
 
         resource_id = r['id'].lower()
         found_ids.append(resource_id)
 
+        product_type = r['type']
+        if '|' in product_type:
+            product_type = product_type.split('|')[0]
+
         _type = ResourceType.objects.filter(
-            name__iexact=r['type'], provider=constants.Provider.AZURE
+            name__iexact=product_type, provider=constants.Provider.AZURE
         ).first()
 
         if not _type:
-            msg = f"resource type [{r['type']}] not found - bypass resource [{resource_id}]"
+            msg = f"resource type [{product_type}] not found - bypass resource [{resource_id}]"
             logger.error(msg)
             _errors += 1
             continue
 
         group_name = resource_id.split('/')[4]
-        group_id = f"/subscriptions/{subscription.pk}/resourceGroups/{group_name}"
-        group = models.ResourceGroupAzure.objects.filter(id__iexact=group_id).first()
+        group_id = f"/subscriptions/{subscription.subscription_id}/resourceGroups/{group_name}"
+        # TODO: ajout company et subscription au filtre
+        group = models.ResourceGroupAzure.objects.filter(resource_id__iexact=group_id).first()
 
         if not group:
             msg = f"resource group [{group_id}] not found - bypass resource [{resource_id}]"
@@ -218,9 +217,13 @@ def sync_resource(subscription_id):
             _errors += 1
             continue
 
-        resource = cli.get_resource_by_id(resource_id, session=session)
-
-        # TODO: gérer exception
+        try:
+            resource = cli.get_resource_by_id(resource_id, session=session)
+        except Exception as err:
+            msg = f"fetch resource {resource_id} error : {err}"
+            logger.exception(msg)
+            _errors += 1
+            continue
 
         metas = resource.get('properties', {}) or {}
 
@@ -229,6 +232,7 @@ def sync_resource(subscription_id):
         datas = dict(
             name=resource['name'],
             subscription=subscription,
+            company=company,
             resource_type=_type,
             location=resource.get('location'),
             provider=constants.Provider.AZURE,
@@ -250,13 +254,13 @@ def sync_resource(subscription_id):
             tags_objects.append(tag)
             # if created: todo event tag
 
-        old_resource = models.ResourceAzure.objects.filter(id=resource_id).first()
+        old_resource = models.ResourceAzure.objects.filter(resource_id=resource_id).first()
         old_object = None
         if old_resource:
             old_object = old_resource.to_dict(exclude=["created", "updated"])
 
         new_resource, created = models.ResourceAzure.objects.update_or_create(
-            id=resource_id, defaults=datas
+            resource_id=resource_id, defaults=datas
         )
 
         if tags_objects:
@@ -264,7 +268,7 @@ def sync_resource(subscription_id):
 
         if created:
             _created += 1
-            create_event_change_create(new_resource)
+            #create_event_change_create(new_resource)
         else:
             changes = create_event_change_update(old_object, new_resource)
             if changes:
@@ -277,66 +281,18 @@ def sync_resource(subscription_id):
 
     # Create events delete
     qs = models.ResourceAzure.objects.exclude(
-        id__in=found_ids, subscription=subscription
+        resource_id__in=found_ids, subscription=subscription
     )
     create_event_change_delete(qs)
 
     qs = models.ResourceAzure.objects.exclude(
-        id__in=found_ids, subscription=subscription
+        resource_id__in=found_ids, subscription=subscription
     )
     _deleted = qs.delete()
 
     logger.info("mark for deleted. [%s] old ResourceAzure" % _deleted)
 
     return dict(errors=_errors, created=_created, updated=_updated, deleted=_deleted)
-
-
-def create_subscriptions_tasks():
-
-    subscriptions = models.Subscription.objects.filter(active=True)
-
-    for subscription in subscriptions:
-
-        subscription_id = str(subscription.pk)
-
-        task_name = f"{subscription_id} : az-sync-resource-group"
-        func = 'mce.azure.tasks.sync_resource_group'
-
-        _filter = dict(name=task_name, func=func)
-        if Schedule.objects.filter(**_filter).first():
-            # TODO: update schedule_type and minutes
-            continue
-
-        # TODO: settings
-
-        # "('54d87296-b91a-47cd-93dd-955bd57b3e9a',)"
-        schedule(
-            func,
-            subscription_id,
-            name=task_name,
-            schedule_type=Schedule.MINUTES,
-            minutes=60,
-        )
-
-        """
-        task_name = f"{subscription_id} : az-sync-resources"
-        func = 'mce.azure.tasks.sync_resources'
-
-        _filter = dict(
-            name=task_name,
-            func=func
-        )
-        if Schedule.objects.filter(**_filter).first():
-            # TODO: update schedule_type and minutes
-            continue
-
-        # TODO: settings 
-        # TODO: il faut que ce soit après les groups !!!
-        schedule(func, subscription_id,
-            name=task_name,
-            schedule_type=Schedule.MINUTES,
-            minutes=30)
-        """
 
 
 def sync_resource_type():
@@ -348,6 +304,8 @@ def sync_resource_type():
 
     # found_ids = []
 
+    # TODO: use batch insert !
+    
     for k, v in PROVIDERS.items():
         r, created = ResourceType.objects.update_or_create(
             name=k, defaults=dict(provider=constants.Provider.AZURE)
@@ -367,3 +325,66 @@ def sync_resource_type():
     # TODO: delete ???
 
     return dict(errors=_errors, created=_created, updated=_updated, deleted=_deleted)
+
+def create_subscriptions_tasks():
+
+    """
+    task_name = "az-sync-resource-type"
+    func = 'mce_tasks_djq.azure.sync_resource_type'
+
+    _filter = dict(name=task_name, func=func)
+    if Schedule.objects.filter(**_filter).first():
+        continue
+
+    schedule(
+        func,
+        subscription_id,
+        name=task_name,
+        schedule_type=Schedule.DAILY,
+        #minutes=86400,
+    )
+    """
+
+    subscriptions = models.Subscription.objects.filter(active=True)
+
+    for subscription in subscriptions:
+
+        subscription_id = subscription.subscription_id
+
+        task_name = f"{subscription_id} : az-sync-resource-group"
+        func = 'mce_tasks_djq.azure.sync_resource_group'
+
+        _filter = dict(name=task_name, func=func)
+        if Schedule.objects.filter(**_filter).first():
+            # TODO: update schedule_type and minutes
+            continue
+
+        # TODO: settings
+
+        # "('54d87296-b91a-47cd-93dd-955bd57b3e9a',)"
+        schedule(
+            func,
+            subscription_id,
+            name=task_name,
+            schedule_type=Schedule.MINUTES,
+            minutes=60,
+        )
+
+        task_name = f"{subscription_id} : az-sync-resources"
+        func = 'mce_tasks_djq.azure.sync_resource'
+
+        _filter = dict(name=task_name, func=func)
+        if Schedule.objects.filter(**_filter).first():
+            # TODO: update schedule_type and minutes
+            continue
+
+        # TODO: settings 
+        # TODO: il faut que ce soit après les groups !!!
+        schedule(
+            func, 
+            subscription_id,
+            name=task_name,
+            schedule_type=Schedule.MINUTES,
+            minutes=30)
+
+
