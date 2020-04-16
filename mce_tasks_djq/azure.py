@@ -187,10 +187,12 @@ def sync_resource(subscription_id):
 
     found_ids = []
 
-    for r in cli.get_resources_list(subscription_id, session):
+    for i, r in enumerate(cli.get_resources_list(subscription_id, session)):
 
         resource_id = r['id'].lower()
         found_ids.append(resource_id)
+
+        logger.debug(f"{i} : start for resource [{resource_id}]")
 
         product_type = r['type']
         if '|' in product_type:

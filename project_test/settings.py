@@ -93,6 +93,8 @@ DATABASES = {
     'default': env.db(default='sqlite:////tmp/mce-tasks-djq-test-sqlite.db'),
 }
 
+AUTH_USER_MODEL = 'mce_django_app.User'
+
 LOGIN_URL = 'admin:login'
 #LOGIN_URL = '/accounts/login/'
 #LOGIN_REDIRECT_URL = '/'

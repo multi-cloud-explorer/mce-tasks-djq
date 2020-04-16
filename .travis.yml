@@ -28,6 +28,7 @@ install:
 script:
   #- black -S -t py37 --check mce_tasks_djq
   - coverage run manage.py test
+  - coverage report -m
 
 after_script:
   - coveralls
